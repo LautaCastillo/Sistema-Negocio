@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calculadora de Precios</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <!-- jsPDF para exportar PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- jsPDF AutoTable para tablas en PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <!-- SheetJS para exportar Excel -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Tesseract.js para OCR -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+</head>
+<body>
+
+  <div id="modulo-precios">
+
+    <!-- ENCABEZADO -->
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="header-brand">
+          <span class="header-icon">🏷️</span>
+          <div>
+            <h1>Calculadora de Precios</h1>
+            <p class="header-sub">Escaneá, calculá y exportá tus precios</p>
+          </div>
+        </div>
+        <button id="btn-limpiar-todo" class="btn btn-danger-outline" title="Borrar todo y empezar de cero">
+          🗑️ Limpiar todo
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+
+      <!-- PASO 1: CARGA DE IMAGEN -->
+      <section class="card" id="seccion-imagen">
+        <div class="card-header">
+          <span class="step-badge">1</span>
+          <h2>Cargar imagen</h2>
+        </div>
+        <div class="card-body">
+          <div id="zona-drop" class="drop-zone" role="button" tabindex="0" aria-label="Zona para arrastrar imágenes">
+            <div class="drop-zone-content">
+              <span class="drop-icon">📷</span>
+              <p class="drop-title">Arrastrá una imagen aquí</p>
+              <p class="drop-sub">o usá los botones de abajo</p>
+            </div>
+          </div>
+          <div class="btn-group-upload">
+            <label class="btn btn-primary" for="input-archivo">
+              📁 Seleccionar archivo
+            </label>
+            <input type="file" id="input-archivo" accept="image/*" multiple hidden />
+            <label class="btn btn-secondary" for="input-camara">
+              📸 Tomar foto
+            </label>
+            <input type="file" id="input-camara" accept="image/*" capture="environment" hidden />
+          </div>
+          <div id="previsualizaciones" class="preview-grid" aria-live="polite"></div>
+          <div id="ocr-status" class="ocr-status hidden" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- PASO 2: CONFIGURACIÓN -->
+      <section class="card" id="seccion-config">
+        <div class="card-header">
+          <span class="step-badge">2</span>
+          <h2>Configurar cálculo</h2>
+        </div>
+        <div class="card-body">
+          <div class="config-grid">
+
+            <div class="field-group">
+              <label for="input-porcentaje">Porcentaje (%)</label>
+              <input type="number" id="input-porcentaje" value="30" min="0" step="0.5"
+                     placeholder="Ej: 30" aria-label="Porcentaje de ajuste" />
+            </div>
+
+            <div class="field-group">
+              <label for="sel-modo">Modo de cálculo</label>
+              <select id="sel-modo">
+                <option value="aumento">Aumento sobre costo</option>
+                <option value="descuento">Descuento</option>
+                <option value="margen">Margen de ganancia</option>
+                <option value="iva">Agregar IVA</option>
+              </select>
+            </div>
+
+            <div class="field-group">
+              <label for="sel-tipo-venta">Tipo de venta</label>
+              <select id="sel-tipo-venta">
+                <option value="unidad">Por unidad</option>
+                <option value="bulto">Por bulto/pack</option>
+                <option value="peso">Por peso/volumen (kg, L)</option>
+              </select>
+            </div>
+
+            <div class="field-group" id="grupo-cantidad-bulto" style="display:none;">
+              <label for="input-cantidad-bulto">Unidades por bulto</label>
+              <input type="number" id="input-cantidad-bulto" value="12" min="1"
+                     placeholder="Ej: 12" />
+            </div>
+
+            <div class="field-group">
+              <label for="sel-redondeo">Redondeo</label>
+              <select id="sel-redondeo">
+                <option value="2">2 decimales (ej: $12.50)</option>
+                <option value="0">Entero (ej: $13)</option>
+                <option value="99">Terminado en .99 (ej: $12.99)</option>
+                <option value="50">Terminado en .50 (ej: $12.50)</option>
+              </select>
+            </div>
+
+          </div>
+
+          <div class="btn-group-config">
+            <button id="btn-agregar-fila" class="btn btn-secondary">
+              ➕ Agregar producto manualmente
+            </button>
+            <button id="btn-calcular" class="btn btn-primary">
+              🧮 Calcular precios
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- PASO 3: TABLA DE RESULTADOS -->
+      <section class="card" id="seccion-tabla">
+        <div class="card-header">
+          <span class="step-badge">3</span>
+          <h2>Productos y precios</h2>
+          <div class="table-actions">
+            <input type="text" id="input-filtro" placeholder="🔍 Filtrar..." class="input-filtro" />
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-wrapper">
+            <table id="tabla-productos" aria-label="Tabla de productos y precios">
+              <thead>
+                <tr>
+                  <th data-col="num">#</th>
+                  <th data-col="producto" class="sortable" tabindex="0">Producto ↕</th>
+                  <th data-col="categoria" class="sortable" tabindex="0">Categoría ↕</th>
+                  <th data-col="precioOriginal" class="sortable" tabindex="0">Precio original ↕</th>
+                  <th data-col="cantidad">Cant./Bulto</th>
+                  <th data-col="porcentaje">% Aplicado</th>
+                  <th data-col="precioFinal" class="sortable" tabindex="0">Precio final ↕</th>
+                  <th data-col="subtotal">Subtotal</th>
+                  <th data-col="dudoso">Estado</th>
+                  <th data-col="acciones">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-productos">
+                <!-- Filas generadas por JS -->
+              </tbody>
+              <tfoot>
+                <tr class="fila-total">
+                  <td colspan="7" style="text-align:right;font-weight:700;">TOTAL GENERAL</td>
+                  <td id="celda-total" colspan="3">$0.00</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div id="resumen-categorias" class="resumen-categorias" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- PASO 4: EXPORTACIÓN -->
+      <section class="card" id="seccion-export">
+        <div class="card-header">
+          <span class="step-badge">4</span>
+          <h2>Exportar</h2>
+        </div>
+        <div class="card-body">
+          <div class="export-grid">
+            <button class="btn btn-export" data-formato="pdf">
+              <span class="export-icon">📄</span>
+              <span>PDF</span>
+            </button>
+            <button class="btn btn-export" data-formato="excel">
+              <span class="export-icon">📊</span>
+              <span>Excel</span>
+            </button>
+            <button class="btn btn-export" data-formato="csv">
+              <span class="export-icon">📋</span>
+              <span>CSV</span>
+            </button>
+            <button class="btn btn-export" data-formato="json">
+              <span class="export-icon">{ }</span>
+              <span>JSON</span>
+            </button>
+            <button class="btn btn-export" data-formato="txt">
+              <span class="export-icon">📝</span>
+              <span>TXT</span>
+            </button>
+            <button class="btn btn-export" data-formato="clipboard" id="btn-copiar">
+              <span class="export-icon">📎</span>
+              <span>Copiar</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- TOAST de notificaciones -->
+    <div id="toast" class="toast hidden" role="alert" aria-live="assertive"></div>
+
+  </div><!-- fin #modulo-precios -->
+
+  <!-- MÓDULOS JS (orden importa) -->
+  <script type="module" src="js/app.js"></script>
+
+</body>
+</html>
